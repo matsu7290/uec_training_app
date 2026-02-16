@@ -9,7 +9,7 @@ export default function RankingPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [volumeTimeframe, setVolumeTimeframe] = useState<'week' | 'month'>('week');
   const [top3Ids, setTop3Ids] = useState<Record<string, number>>({});
-  const [currentUser, setCurrentUser] = useState<any>(null); // ★追加：ログインユーザー管理
+  const [currentUser, setCurrentUser] = useState<any>(null); // ★ログイン状態を保持
 
   const fetchBig3 = async () => {
     const { data } = await supabase.from('big3_rankings').select('*').order('max_weight', { ascending: false }).limit(10);
@@ -32,7 +32,7 @@ export default function RankingPage() {
 
   useEffect(() => {
     const initFetch = async () => {
-      // ★追加：ログイン状態の確認
+      // ★ログインユーザーを取得
       const { data: { user } } = await supabase.auth.getUser();
       setCurrentUser(user);
 
@@ -56,13 +56,12 @@ export default function RankingPage() {
           const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}`;
           const val = item.max_weight || item.total_volume;
           
-          // ★修正：ログインしていない場合は情報を隠す
+          // ★ログインしていない（currentUserがnull）なら「匿名」にする
           const isGuest = !currentUser;
-          const studentId = item.email?.split('@')[0] || '匿名';
-          const name = isGuest ? '匿名部員' : (item.display_name || studentId);
-          const userId = item.user_id || item.id;
+          const name = isGuest ? '匿名' : (item.display_name || item.email?.split('@')[0] || '匿名');
           const avatarUrl = isGuest ? null : item.avatar_url;
           const grade = isGuest ? null : item.grade;
+          const userId = item.user_id || item.id;
 
           return (
             <div 
@@ -102,9 +101,9 @@ export default function RankingPage() {
         ランキング
       </h1>
 
-      {/* ★追加：未ログイン時の警告メッセージ */}
+      {/* ★未ログイン時の案内を表示 */}
       {!currentUser && !isLoading && (
-        <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-2xl border border-blue-100 dark:border-blue-800 text-center">
+        <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-2xl border border-blue-100 dark:border-blue-800 text-center animate-in zoom-in-95">
           <p className="text-[10px] font-black text-blue-600 dark:text-blue-400 uppercase tracking-widest">
             ログインすると部員名が表示されます 💪
           </p>
