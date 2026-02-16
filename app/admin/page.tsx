@@ -10,20 +10,18 @@ export default function AdminPage() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
-  // --- ステート：イベント管理 ---
   const [events, setEvents] = useState<any[]>([]);
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
   const [eventTitle, setEventTitle] = useState('');
   const [eventDate, setEventDate] = useState('');
   const [eventDesc, setEventDesc] = useState('');
 
-  // --- ステート：部員属性管理 (profiles) ---
   const [profiles, setProfiles] = useState<any[]>([]);
   const [editingProfileId, setEditingProfileId] = useState<string | null>(null);
   const [editRole, setEditRole] = useState('');
   const [editGrade, setEditGrade] = useState('');
+  const [editIsAdmin, setEditIsAdmin] = useState(false); // ★追加：is_admin編集用
 
-  // --- ステート：新規名簿登録 (allowed_members) ---
   const [allowedMembers, setAllowedMembers] = useState<any[]>([]);
   const [newStudentId, setNewStudentId] = useState('');
   const [newMemberName, setNewMemberName] = useState('');
@@ -36,7 +34,6 @@ export default function AdminPage() {
       const { data: profile } = await supabase
         .from('profiles').select('is_admin, role').eq('id', user.id).single();
 
-      // ★ 修正ポイント：is_admin が true か、役職が「運営」「副部長」「部長」なら許可
       const hasPermission = profile?.is_admin || ['運営', '副部長', '部長'].includes(profile?.role);
 
       if (!hasPermission) {
@@ -75,9 +72,18 @@ export default function AdminPage() {
     fetchData();
   };
 
+  // ★修正：is_admin も更新対象に含める
   const handleUpdateProfile = async (id: string) => {
-    const { error } = await supabase.from('profiles').update({ role: editRole, grade: editGrade }).eq('id', id);
-    if (error) return alert('更新失敗');
+    const { error } = await supabase
+      .from('profiles')
+      .update({ 
+        role: editRole, 
+        grade: editGrade, 
+        is_admin: editIsAdmin 
+      })
+      .eq('id', id);
+    
+    if (error) return alert('更新失敗: ' + error.message);
     setEditingProfileId(null);
     fetchData();
   };
@@ -98,6 +104,7 @@ export default function AdminPage() {
     <div className="p-6 max-w-xl mx-auto mb-24 space-y-12">
       <h1 className="text-3xl font-black italic bg-gradient-to-r from-red-600 to-pink-500 bg-clip-text text-transparent uppercase tracking-tighter">管理者専用画面</h1>
 
+      {/* イベント管理セクション（変更なし） */}
       <section className="bg-white/70 dark:bg-slate-800/60 backdrop-blur-xl p-6 rounded-[2.5rem] border border-white/40 dark:border-slate-700/50 shadow-xl">
         <h2 className="text-lg font-black mb-4 flex items-center gap-2">📅 {editingEventId ? 'Edit Event' : 'New Event'}</h2>
         <form onSubmit={handleSaveEvent} className="space-y-4">
@@ -121,6 +128,7 @@ export default function AdminPage() {
         </div>
       </section>
 
+      {/* ロール＆学年管理セクション（★修正あり） */}
       <section className="space-y-4">
         <h2 className="text-sm font-black text-slate-400 uppercase tracking-widest ml-2">ロール＆学年管理</h2>
         <div className="grid gap-3">
@@ -131,26 +139,48 @@ export default function AdminPage() {
                   <UserAvatar url={p.avatar_url} size="w-10 h-10" />
                   <div className="flex flex-col">
                     <span className="text-xs font-black">{p.display_name || p.email.split('@')[0]}</span>
-                    <span className="text-[9px] text-slate-400 font-mono">{p.email.split('@')[0]}</span>
+                    <span className="text-[9px] text-slate-400 font-mono">{p.email}</span>
                   </div>
                 </div>
-                <button onClick={() => { setEditingProfileId(p.id); setEditRole(p.role); setEditGrade(p.grade || ''); }} className="text-[10px] font-black text-blue-500 underline">編集</button>
+                {/* ★修正：編集開始時に is_admin の状態もセットする */}
+                <button onClick={() => { 
+                  setEditingProfileId(p.id); 
+                  setEditRole(p.role); 
+                  setEditGrade(p.grade || ''); 
+                  setEditIsAdmin(p.is_admin || false);
+                }} className="text-[10px] font-black text-blue-500 underline">編集</button>
               </div>
+              
               {editingProfileId === p.id ? (
-                <div className="mt-3 flex gap-2 animate-in fade-in slide-in-from-top-1">
-                  <select value={editRole} onChange={(e) => setEditRole(e.target.value)} className="flex-1 bg-white dark:bg-slate-900 rounded-xl p-2 text-xs font-bold border-none">
-                    <option value="部員">部員</option>
-                    <option value="運営">運営</option>
-                    <option value="副部長">副部長</option>
-                    <option value="部長">部長</option>
-                  </select>
-                  <input type="text" value={editGrade} onChange={(e) => setEditGrade(e.target.value)} placeholder="B4" className="w-16 bg-white dark:bg-slate-900 rounded-xl p-2 text-xs font-bold border-none text-center" />
-                  <button onClick={() => handleUpdateProfile(p.id)} className="bg-green-600 text-white px-3 rounded-xl text-[10px] font-black">SAVE</button>
+                <div className="mt-3 space-y-3 animate-in fade-in slide-in-from-top-1">
+                  <div className="flex gap-2">
+                    <select value={editRole} onChange={(e) => setEditRole(e.target.value)} className="flex-1 bg-white dark:bg-slate-900 rounded-xl p-2 text-xs font-bold border-none">
+                      <option value="部員">部員</option>
+                      <option value="運営">運営</option>
+                      <option value="副部長">副部長</option>
+                      <option value="部長">部長</option>
+                    </select>
+                    <input type="text" value={editGrade} onChange={(e) => setEditGrade(e.target.value)} placeholder="B4" className="w-16 bg-white dark:bg-slate-900 rounded-xl p-2 text-xs font-bold border-none text-center" />
+                  </div>
+                  
+                  {/* ★追加：is_admin の切り替えスイッチ */}
+                  <div className="flex items-center justify-between px-2">
+                    <label className="text-[10px] font-black text-slate-500 uppercase">管理者権限</label>
+                    <input 
+                      type="checkbox" 
+                      checked={editIsAdmin} 
+                      onChange={(e) => setEditIsAdmin(e.target.checked)}
+                      className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+                  </div>
+
+                  <button onClick={() => handleUpdateProfile(p.id)} className="w-full bg-green-600 text-white py-2 rounded-xl text-[10px] font-black">SAVE CHANGES</button>
                 </div>
               ) : (
                 <div className="mt-2 flex gap-2">
                   <span className="text-[9px] bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded-full font-bold text-slate-500">{p.grade || '??'}</span>
                   <span className="text-[9px] bg-blue-50 dark:bg-blue-900/30 px-2 py-0.5 rounded-full font-bold text-blue-500">{p.role}</span>
+                  {p.is_admin && <span className="text-[9px] bg-red-50 dark:bg-red-900/30 px-2 py-0.5 rounded-full font-bold text-red-500">ADMIN</span>}
                 </div>
               )}
             </div>
@@ -158,6 +188,7 @@ export default function AdminPage() {
         </div>
       </section>
 
+      {/* 部員追加セクション（変更なし） */}
       <section className="bg-slate-900 text-white p-6 rounded-[2.5rem] shadow-2xl">
         <h2 className="text-lg font-black mb-4 flex items-center gap-2">📝 部員追加</h2>
         <form onSubmit={handleAddAllowedMember} className="space-y-3 mb-6">
