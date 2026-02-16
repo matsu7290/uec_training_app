@@ -1,14 +1,15 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { supabase } from '../../utils/supabase';
-import UserAvatar from '../components/UserAvatar'; // 追加
+import UserAvatar from '../components/UserAvatar';
 
 export default function RankingPage() {
   const [big3, setBig3] = useState<any[]>([]);
   const [volume, setVolume] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [volumeTimeframe, setVolumeTimeframe] = useState<'week' | 'month'>('week');
-  const [top3Ids, setTop3Ids] = useState<Record<string, number>>({}); // 追加
+  const [top3Ids, setTop3Ids] = useState<Record<string, number>>({});
+  const [currentUser, setCurrentUser] = useState<any>(null); // ★追加：ログインユーザー管理
 
   const fetchBig3 = async () => {
     const { data } = await supabase.from('big3_rankings').select('*').order('max_weight', { ascending: false }).limit(10);
@@ -31,6 +32,10 @@ export default function RankingPage() {
 
   useEffect(() => {
     const initFetch = async () => {
+      // ★追加：ログイン状態の確認
+      const { data: { user } } = await supabase.auth.getUser();
+      setCurrentUser(user);
+
       await Promise.all([fetchBig3(), fetchVolume(volumeTimeframe), fetchTop3()]);
       setIsLoading(false);
     };
@@ -46,13 +51,18 @@ export default function RankingPage() {
         </div>
         {children}
       </div>
-      <div className="space-y-3 pt-2"> {/* 王冠のための余白 */}
+      <div className="space-y-3 pt-2">
         {data.map((item: any, index: number) => {
           const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}`;
           const val = item.max_weight || item.total_volume;
+          
+          // ★修正：ログインしていない場合は情報を隠す
+          const isGuest = !currentUser;
           const studentId = item.email?.split('@')[0] || '匿名';
-          const name = item.display_name || studentId;
-          const userId = item.user_id || item.id; // テーブルによってIDのカラム名が異なる場合に対応
+          const name = isGuest ? '匿名部員' : (item.display_name || studentId);
+          const userId = item.user_id || item.id;
+          const avatarUrl = isGuest ? null : item.avatar_url;
+          const grade = isGuest ? null : item.grade;
 
           return (
             <div 
@@ -63,13 +73,13 @@ export default function RankingPage() {
               <div className="flex items-center gap-4">
                 <span className={`w-8 text-center font-black ${index === 0 ? 'text-2xl' : 'text-lg text-slate-400'}`}>{medal}</span>
                 <UserAvatar 
-                  url={item.avatar_url} 
-                  rank={top3Ids[userId]} 
+                  url={avatarUrl} 
+                  rank={isGuest ? undefined : top3Ids[userId]} 
                   size="w-10 h-10"
                 />
                 <div className="flex flex-col">
                   <span className="font-bold text-sm leading-none">{name}</span>
-                  {item.grade && <span className="text-[8px] text-slate-400 font-bold mt-1 uppercase">{item.grade}</span>}
+                  {grade && <span className="text-[8px] text-slate-400 font-bold mt-1 uppercase">{grade}</span>}
                 </div>
               </div>
               <div className="flex items-baseline gap-1">
@@ -91,6 +101,15 @@ export default function RankingPage() {
       <h1 className="text-3xl font-black italic tracking-tighter mb-8 bg-gradient-to-r from-amber-500 to-yellow-300 bg-clip-text text-transparent uppercase animate-in fade-in slide-in-from-left-4 duration-700">
         ランキング
       </h1>
+
+      {/* ★追加：未ログイン時の警告メッセージ */}
+      {!currentUser && !isLoading && (
+        <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-2xl border border-blue-100 dark:border-blue-800 text-center">
+          <p className="text-[10px] font-black text-blue-600 dark:text-blue-400 uppercase tracking-widest">
+            ログインすると部員名が表示されます 💪
+          </p>
+        </div>
+      )}
       
       {isLoading ? (
         <div className="animate-pulse space-y-10">
