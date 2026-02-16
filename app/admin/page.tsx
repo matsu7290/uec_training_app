@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../utils/supabase';
 import { useRouter } from 'next/navigation';
+import UserAvatar from '../components/UserAvatar';
 
 export default function AdminPage() {
   const router = useRouter();
@@ -33,13 +34,17 @@ export default function AdminPage() {
       if (!user) { router.push('/login'); return; }
 
       const { data: profile } = await supabase
-        .from('profiles').select('is_admin').eq('id', user.id).single();
+        .from('profiles').select('is_admin, role').eq('id', user.id).single();
 
-      if (!profile?.is_admin) {
-        alert('管理者権限がありません。');
+      // ★ 修正ポイント：is_admin が true か、役職が「運営」「副部長」「部長」なら許可
+      const hasPermission = profile?.is_admin || ['運営', '副部長', '部長'].includes(profile?.role);
+
+      if (!hasPermission) {
+        alert('運営以上の権限が必要です。');
         router.push('/');
         return;
       }
+      
       setIsAdmin(true);
       fetchData();
     };
@@ -49,7 +54,7 @@ export default function AdminPage() {
   const fetchData = async () => {
     setIsLoading(true);
     const { data: eData } = await supabase.from('events').select('*').order('event_date', { ascending: true });
-    const { data: pData } = await supabase.from('profiles').select('*').order('email');
+    const { data: pData } = await supabase.from('profiles').select('*').order('grade').order('email');
     const { data: aData } = await supabase.from('allowed_members').select('*').order('created_at', { ascending: false });
     
     if (eData) setEvents(eData);
@@ -58,7 +63,6 @@ export default function AdminPage() {
     setIsLoading(false);
   };
 
-  // --- ロジック：イベント保存 ---
   const handleSaveEvent = async (e: React.FormEvent) => {
     e.preventDefault();
     const eventData = { title: eventTitle, event_date: eventDate, description: eventDesc };
@@ -71,7 +75,6 @@ export default function AdminPage() {
     fetchData();
   };
 
-  // --- ロジック：プロフィール更新 ---
   const handleUpdateProfile = async (id: string) => {
     const { error } = await supabase.from('profiles').update({ role: editRole, grade: editGrade }).eq('id', id);
     if (error) return alert('更新失敗');
@@ -79,7 +82,6 @@ export default function AdminPage() {
     fetchData();
   };
 
-  // --- ロジック：新規名簿追加 ---
   const handleAddAllowedMember = async (e: React.FormEvent) => {
     e.preventDefault();
     const { error } = await supabase.from('allowed_members').insert([{ student_id: newStudentId, name: newMemberName }]);
@@ -96,7 +98,6 @@ export default function AdminPage() {
     <div className="p-6 max-w-xl mx-auto mb-24 space-y-12">
       <h1 className="text-3xl font-black italic bg-gradient-to-r from-red-600 to-pink-500 bg-clip-text text-transparent uppercase tracking-tighter">管理者専用画面</h1>
 
-      {/* 1. イベント管理セクション */}
       <section className="bg-white/70 dark:bg-slate-800/60 backdrop-blur-xl p-6 rounded-[2.5rem] border border-white/40 dark:border-slate-700/50 shadow-xl">
         <h2 className="text-lg font-black mb-4 flex items-center gap-2">📅 {editingEventId ? 'Edit Event' : 'New Event'}</h2>
         <form onSubmit={handleSaveEvent} className="space-y-4">
@@ -120,14 +121,19 @@ export default function AdminPage() {
         </div>
       </section>
 
-      {/* 2. 部員属性（役職・学年）管理 */}
       <section className="space-y-4">
         <h2 className="text-sm font-black text-slate-400 uppercase tracking-widest ml-2">ロール＆学年管理</h2>
         <div className="grid gap-3">
           {profiles.map(p => (
             <div key={p.id} className="bg-white/50 dark:bg-slate-800/40 backdrop-blur-md p-4 rounded-3xl border border-white/20">
               <div className="flex justify-between items-center">
-                <span className="text-xs font-black">{p.email.split('@')[0]}</span>
+                <div className="flex items-center gap-3">
+                  <UserAvatar url={p.avatar_url} size="w-10 h-10" />
+                  <div className="flex flex-col">
+                    <span className="text-xs font-black">{p.display_name || p.email.split('@')[0]}</span>
+                    <span className="text-[9px] text-slate-400 font-mono">{p.email.split('@')[0]}</span>
+                  </div>
+                </div>
                 <button onClick={() => { setEditingProfileId(p.id); setEditRole(p.role); setEditGrade(p.grade || ''); }} className="text-[10px] font-black text-blue-500 underline">編集</button>
               </div>
               {editingProfileId === p.id ? (
@@ -142,14 +148,16 @@ export default function AdminPage() {
                   <button onClick={() => handleUpdateProfile(p.id)} className="bg-green-600 text-white px-3 rounded-xl text-[10px] font-black">SAVE</button>
                 </div>
               ) : (
-                <p className="text-[10px] text-slate-400 mt-1 font-bold italic">{p.grade || '??'} / {p.role}</p>
+                <div className="mt-2 flex gap-2">
+                  <span className="text-[9px] bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded-full font-bold text-slate-500">{p.grade || '??'}</span>
+                  <span className="text-[9px] bg-blue-50 dark:bg-blue-900/30 px-2 py-0.5 rounded-full font-bold text-blue-500">{p.role}</span>
+                </div>
               )}
             </div>
           ))}
         </div>
       </section>
 
-      {/* 3. ホワイトリスト管理（新規部員登録） */}
       <section className="bg-slate-900 text-white p-6 rounded-[2.5rem] shadow-2xl">
         <h2 className="text-lg font-black mb-4 flex items-center gap-2">📝 部員追加</h2>
         <form onSubmit={handleAddAllowedMember} className="space-y-3 mb-6">
