@@ -53,7 +53,7 @@ export default function LoginPage() {
         <h1 className="text-2xl font-bold mb-6 text-center">🔐 部員ログイン</h1>
         {errorMsg && <div className="mb-4 p-3 bg-red-100 text-red-700 rounded text-sm font-bold">{errorMsg}</div>}
         <form className="flex flex-col gap-4">
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="a2411728@gl.cc.uec.ac.jp" className="w-full border p-2 rounded-md dark:bg-gray-700" />
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="a0000000@gl.cc.uec.ac.jp" className="w-full border p-2 rounded-md dark:bg-gray-700" />
           <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="パスワード" className="w-full border p-2 rounded-md dark:bg-gray-700" />
           <button onClick={handleSignIn} className="bg-blue-600 text-white font-bold py-2 rounded-md">ログイン</button>
           <button onClick={handleSignUp} className="bg-gray-200 dark:bg-gray-700 py-2 rounded-md">新規登録</button>
