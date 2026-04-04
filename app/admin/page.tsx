@@ -7,6 +7,23 @@ import UserAvatar from "../components/UserAvatar";
 
 type TabType = "events" | "members" | "whitelist";
 
+type Event = {
+  id: string;
+  title: string;
+  event_date: string;
+  description: string;
+};
+type Profile = {
+  id: string;
+  display_name?: string;
+  email: string;
+  avatar_url?: string;
+  role?: string;
+  grade?: string;
+  is_admin?: boolean;
+};
+type AllowedMember = { student_id: string; name: string };
+
 export default function AdminPage() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<TabType>("members");
@@ -14,9 +31,9 @@ export default function AdminPage() {
   const [searchTerm, setSearchTerm] = useState("");
 
   // --- データステート ---
-  const [events, setEvents] = useState<any[]>([]);
-  const [profiles, setProfiles] = useState<any[]>([]);
-  const [allowedMembers, setAllowedMembers] = useState<any[]>([]);
+  const [events, setEvents] = useState<Event[]>([]);
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [allowedMembers, setAllowedMembers] = useState<AllowedMember[]>([]);
 
   // --- 編集用ステート ---
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
@@ -31,6 +48,25 @@ export default function AdminPage() {
 
   const [newStudentId, setNewStudentId] = useState("");
   const [newMemberName, setNewMemberName] = useState("");
+
+  async function fetchData() {
+    setIsLoading(true);
+    const [e, p, a] = await Promise.all([
+      supabase
+        .from("events")
+        .select("*")
+        .order("event_date", { ascending: true }),
+      supabase.from("profiles").select("*").order("grade").order("email"),
+      supabase
+        .from("allowed_members")
+        .select("*")
+        .order("created_at", { ascending: false }),
+    ]);
+    if (e.data) setEvents(e.data);
+    if (p.data) setProfiles(p.data);
+    if (a.data) setAllowedMembers(a.data);
+    setIsLoading(false);
+  }
 
   useEffect(() => {
     const checkAdmin = async () => {
@@ -57,25 +93,6 @@ export default function AdminPage() {
     };
     checkAdmin();
   }, [router]);
-
-  const fetchData = async () => {
-    setIsLoading(true);
-    const [e, p, a] = await Promise.all([
-      supabase
-        .from("events")
-        .select("*")
-        .order("event_date", { ascending: true }),
-      supabase.from("profiles").select("*").order("grade").order("email"),
-      supabase
-        .from("allowed_members")
-        .select("*")
-        .order("created_at", { ascending: false }),
-    ]);
-    if (e.data) setEvents(e.data);
-    if (p.data) setProfiles(p.data);
-    if (a.data) setAllowedMembers(a.data);
-    setIsLoading(false);
-  };
 
   // --- ハンドラー ---
   const handleUpdateProfile = async (id: string) => {
@@ -114,23 +131,26 @@ export default function AdminPage() {
       return alert("学籍番号と氏名を正しく入力してください。");
     }
 
-    const { data: existing, error: existingError } = await supabase
-      .from("allowed_members")
-      .select("student_id")
-      .eq("student_id", studentId)
-      .maybeSingle();
-
-    if (existingError) {
-      return alert(`追加失敗: ${existingError.message}`);
-    }
-    if (existing) {
-      return alert("この学籍番号はすでに名簿に登録されています。");
+    const { data: sessionData, error: sessionError } =
+      await supabase.auth.getSession();
+    if (sessionError || !sessionData?.session?.access_token) {
+      return alert("ログインセッションが無効です。再度ログインしてください。");
     }
 
-    const { error } = await supabase
-      .from("allowed_members")
-      .insert([{ student_id: studentId, name: studentName }]);
-    if (error) return alert(`追加失敗: ${error.message}`);
+    const response = await fetch("/api/allowed-members", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        student_id: studentId,
+        name: studentName,
+        access_token: sessionData.session.access_token,
+      }),
+    });
+
+    const result = await response.json();
+    if (!response.ok) {
+      return alert(result.error || "追加失敗");
+    }
 
     setNewStudentId("");
     setNewMemberName("");
@@ -195,7 +215,7 @@ export default function AdminPage() {
               >
                 <div className="flex justify-between items-center">
                   <div className="flex items-center gap-3">
-                    <UserAvatar url={p.avatar_url} size="w-12 h-12" />
+                    <UserAvatar url={p.avatar_url ?? ""} size="w-12 h-12" />
                     <div>
                       <p className="font-black text-sm">
                         {p.display_name || p.email.split("@")[0]}
@@ -208,7 +228,7 @@ export default function AdminPage() {
                   <button
                     onClick={() => {
                       setEditingProfileId(p.id);
-                      setEditRole(p.role);
+                      setEditRole(p.role ?? "");
                       setEditGrade(p.grade || "");
                       setEditIsAdmin(p.is_admin || false);
                     }}
