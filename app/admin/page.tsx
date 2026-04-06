@@ -112,9 +112,21 @@ export default function AdminPage() {
       event_date: eventDate,
       description: eventDesc,
     };
-    if (editingEventId)
-      await supabase.from("events").update(data).eq("id", editingEventId);
-    else await supabase.from("events").insert([data]);
+    let error;
+    if (editingEventId) {
+      const result = await supabase
+        .from("events")
+        .update(data)
+        .eq("id", editingEventId);
+      error = result.error;
+    } else {
+      const result = await supabase.from("events").insert([data]);
+      error = result.error;
+    }
+    if (error) {
+      alert("保存失敗: " + error.message);
+      return;
+    }
     setEventTitle("");
     setEventDate("");
     setEventDesc("");
