@@ -1,9 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "../../../../utils/supabase/server";
+import { createClient } from "@supabase/supabase-js";
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+if (!supabaseUrl || !serviceRoleKey) {
+  throw new Error(
+    "Missing Supabase environment variables. Set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.",
+  );
+}
+
+const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
+  auth: { persistSession: false },
+});
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createClient();
     const { title, event_date, description } = await request.json();
 
     if (!title || !event_date) {
@@ -17,13 +29,13 @@ export async function POST(request: NextRequest) {
     const {
       data: { user },
       error: authError,
-    } = await supabase.auth.getUser();
+    } = await supabaseAdmin.auth.getUser();
 
     if (authError || !user) {
       return NextResponse.json({ error: "認証が必要です" }, { status: 401 });
     }
 
-    const { data: profile, error: profileError } = await supabase
+    const { data: profile, error: profileError } = await supabaseAdmin
       .from("profiles")
       .select("is_admin, role")
       .eq("id", user.id)
@@ -44,7 +56,7 @@ export async function POST(request: NextRequest) {
     }
 
     // イベント作成
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
       .from("events")
       .insert([{ title, event_date, description }])
       .select();
@@ -65,7 +77,6 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    const supabase = createClient();
     const { id, title, event_date, description } = await request.json();
 
     if (!id || !title || !event_date) {
@@ -79,13 +90,13 @@ export async function PUT(request: NextRequest) {
     const {
       data: { user },
       error: authError,
-    } = await supabase.auth.getUser();
+    } = await supabaseAdmin.auth.getUser();
 
     if (authError || !user) {
       return NextResponse.json({ error: "認証が必要です" }, { status: 401 });
     }
 
-    const { data: profile, error: profileError } = await supabase
+    const { data: profile, error: profileError } = await supabaseAdmin
       .from("profiles")
       .select("is_admin, role")
       .eq("id", user.id)
@@ -106,7 +117,7 @@ export async function PUT(request: NextRequest) {
     }
 
     // イベント更新
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
       .from("events")
       .update({ title, event_date, description })
       .eq("id", id)
