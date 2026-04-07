@@ -107,26 +107,33 @@ export default function AdminPage() {
 
   const handleSaveEvent = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    const { data: sessionData, error: sessionError } =
+      await supabase.auth.getSession();
+    if (sessionError || !sessionData?.session?.access_token) {
+      return alert("ログインセッションが無効です。再度ログインしてください。");
+    }
+
     const data = {
       title: eventTitle,
       event_date: eventDate,
       description: eventDesc,
     };
-    let error;
-    if (editingEventId) {
-      const result = await supabase
-        .from("events")
-        .update(data)
-        .eq("id", editingEventId);
-      error = result.error;
-    } else {
-      const result = await supabase.from("events").insert([data]);
-      error = result.error;
+
+    const method = editingEventId ? "PUT" : "POST";
+    const body = editingEventId ? { ...data, id: editingEventId } : data;
+
+    const response = await fetch("/api/events", {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+    const result = await response.json();
+    if (!response.ok) {
+      return alert(result.error || "保存失敗");
     }
-    if (error) {
-      alert("保存失敗: " + error.message);
-      return;
-    }
+
     setEventTitle("");
     setEventDate("");
     setEventDesc("");
