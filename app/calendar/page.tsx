@@ -1,43 +1,66 @@
-'use client';
+"use client";
 
-import { useEffect, useState } from 'react';
-import { supabase } from '../../utils/supabase';
-import UserAvatar from '../components/UserAvatar'; // 追加
+import { useEffect, useState } from "react";
+// ★ 修正：新しいクライアントを読み込む
+import { createClient } from "../../utils/supabase/client";
+import UserAvatar from "../components/UserAvatar";
 
 export default function CalendarPage() {
+  // ★ 修正：コンポーネント内でクライアントを生成
+  const supabase = createClient();
+
   const [events, setEvents] = useState<any[]>([]);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [currentProfile, setCurrentProfile] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [viewDate, setViewDate] = useState(new Date());
-  const [selectedParticipants, setSelectedParticipants] = useState<any[] | null>(null);
-  const [selectedEventTitle, setSelectedEventTitle] = useState('');
-  const [top3Ids, setTop3Ids] = useState<Record<string, number>>({}); // 追加
+  const [selectedParticipants, setSelectedParticipants] = useState<
+    any[] | null
+  >(null);
+  const [selectedEventTitle, setSelectedEventTitle] = useState("");
+  const [top3Ids, setTop3Ids] = useState<Record<string, number>>({});
+
+  // ★ 追加：予定追加フォーム用のState
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newTitle, setNewTitle] = useState("");
+  const [newDate, setNewDate] = useState("");
+  const [newDescription, setNewDescription] = useState("");
 
   const fetchEvents = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
     if (user) {
       setCurrentUser(user);
-      const { data: prof } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+      const { data: prof } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", user.id)
+        .single();
       setCurrentProfile(prof);
     }
 
-    const { data: top3 } = await supabase.from('last_month_top_3').select('*');
+    const { data: top3 } = await supabase.from("last_month_top_3").select("*");
     if (top3) {
-      const mapping = top3.reduce((acc: any, curr: any) => ({ ...acc, [curr.user_id]: curr.rank }), {});
+      const mapping = top3.reduce(
+        (acc: any, curr: any) => ({ ...acc, [curr.user_id]: curr.rank }),
+        {},
+      );
       setTop3Ids(mapping);
     }
 
     const { data } = await supabase
-      .from('events')
-      .select(`
+      .from("events")
+      .select(
+        `
         *,
         event_participants (
           user_id,
           profiles ( email, display_name, avatar_url, grade, role )
         )
-      `)
-      .order('event_date', { ascending: true });
+      `,
+      )
+      .order("event_date", { ascending: true });
 
     if (data) setEvents(data);
     setIsLoading(false);
@@ -47,33 +70,79 @@ export default function CalendarPage() {
     fetchEvents();
   }, []);
 
-  const getDaysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
-  const getFirstDayOfMonth = (year: number, month: number) => new Date(year, month, 1).getDay();
+  const getDaysInMonth = (year: number, month: number) =>
+    new Date(year, month + 1, 0).getDate();
+  const getFirstDayOfMonth = (year: number, month: number) =>
+    new Date(year, month, 1).getDay();
 
-  const daysInMonth = getDaysInMonth(viewDate.getFullYear(), viewDate.getMonth());
-  const firstDay = getFirstDayOfMonth(viewDate.getFullYear(), viewDate.getMonth());
-  const prevMonthDays = getDaysInMonth(viewDate.getFullYear(), viewDate.getMonth() - 1);
+  const daysInMonth = getDaysInMonth(
+    viewDate.getFullYear(),
+    viewDate.getMonth(),
+  );
+  const firstDay = getFirstDayOfMonth(
+    viewDate.getFullYear(),
+    viewDate.getMonth(),
+  );
+  const prevMonthDays = getDaysInMonth(
+    viewDate.getFullYear(),
+    viewDate.getMonth() - 1,
+  );
 
-  const handlePrevMonth = () => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() - 1));
-  const handleNextMonth = () => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() + 1));
+  const handlePrevMonth = () =>
+    setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() - 1));
+  const handleNextMonth = () =>
+    setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() + 1));
 
   const handleRSVP = async (eventId: string, participants: any[]) => {
-    if (!currentUser) return alert('ログインが必要です！');
-    const myP = participants.find(p => p.user_id === currentUser.id);
+    if (!currentUser) return alert("ログインが必要です！");
+    const myP = participants.find((p) => p.user_id === currentUser.id);
 
     if (myP) {
-      await supabase.from('event_participants').delete().match({ event_id: eventId, user_id: currentUser.id });
+      await supabase
+        .from("event_participants")
+        .delete()
+        .match({ event_id: eventId, user_id: currentUser.id });
     } else {
-      await supabase.from('event_participants').insert([{ event_id: eventId, user_id: currentUser.id }]);
+      await supabase
+        .from("event_participants")
+        .insert([{ event_id: eventId, user_id: currentUser.id }]);
     }
     fetchEvents();
   };
 
   const deleteEvent = async (id: string) => {
-    if (!confirm('このイベントを削除しますか？')) return;
-    const { error } = await supabase.from('events').delete().eq('id', id);
-    if (error) alert('削除に失敗しました: ' + error.message);
+    if (!confirm("このイベントを削除しますか？")) return;
+    const { error } = await supabase.from("events").delete().eq("id", id);
+    if (error) alert("削除に失敗しました: " + error.message);
     else fetchEvents();
+  };
+
+  // ★ 追加：予定を新しく作成（INSERT）する関数
+  const handleAddEvent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTitle || !newDate)
+      return alert("タイトルと日付を入力してください。");
+
+    const { error } = await supabase.from("events").insert([
+      {
+        title: newTitle,
+        event_date: newDate,
+        description: newDescription,
+      },
+    ]);
+
+    if (error) {
+      alert(
+        "追加に失敗しました（RLSの設定を確認してください）: " + error.message,
+      );
+    } else {
+      alert("予定を追加しました！");
+      setNewTitle("");
+      setNewDate("");
+      setNewDescription("");
+      setShowAddForm(false);
+      fetchEvents(); // カレンダーを再読み込み
+    }
   };
 
   return (
@@ -82,39 +151,135 @@ export default function CalendarPage() {
         スケジュール
       </h1>
 
+      {/* ★ 追加：管理者（is_admin）のみ表示される「予定追加フォーム」 */}
+      {currentProfile?.is_admin && (
+        <div className="mb-10 animate-in fade-in zoom-in-95 duration-700">
+          <button
+            onClick={() => setShowAddForm(!showAddForm)}
+            className="w-full bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-black py-4 rounded-2xl text-xs active:scale-95 transition-all shadow-lg uppercase tracking-widest"
+          >
+            {showAddForm ? "✕ フォームを閉じる" : "＋ 新しい予定を追加"}
+          </button>
+
+          {showAddForm && (
+            <form
+              onSubmit={handleAddEvent}
+              className="mt-4 bg-white/70 dark:bg-slate-800/60 backdrop-blur-xl p-6 rounded-[2rem] border border-white/40 dark:border-slate-700/50 shadow-sm animate-in slide-in-from-top-4 duration-500"
+            >
+              <div className="space-y-4">
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                    Title
+                  </label>
+                  <input
+                    type="text"
+                    value={newTitle}
+                    onChange={(e) => setNewTitle(e.target.value)}
+                    className="w-full mt-1 bg-white/50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="例： 全体ミーティング"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                    Date
+                  </label>
+                  <input
+                    type="date"
+                    value={newDate}
+                    onChange={(e) => setNewDate(e.target.value)}
+                    className="w-full mt-1 bg-white/50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                    Description (Optional)
+                  </label>
+                  <textarea
+                    value={newDescription}
+                    onChange={(e) => setNewDescription(e.target.value)}
+                    className="w-full mt-1 bg-white/50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-sm font-bold resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="詳細や場所など"
+                    rows={3}
+                  ></textarea>
+                </div>
+                <button
+                  type="submit"
+                  className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black py-3 rounded-xl text-xs transition-colors shadow-lg uppercase tracking-widest mt-2"
+                >
+                  予定を保存
+                </button>
+              </div>
+            </form>
+          )}
+        </div>
+      )}
+
+      {/* --- これより下は元のカレンダー表示のコードそのまま --- */}
       <div className="bg-white/70 dark:bg-slate-800/60 backdrop-blur-xl rounded-[2rem] p-6 border border-white/40 dark:border-slate-700/50 shadow-sm mb-10 animate-in fade-in zoom-in-95 duration-700">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-xl font-black italic tracking-tight">
             {viewDate.getFullYear()}.{viewDate.getMonth() + 1}
           </h2>
           <div className="flex gap-2">
-            <button onClick={handlePrevMonth} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full transition">◀</button>
-            <button onClick={handleNextMonth} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full transition">▶</button>
+            <button
+              onClick={handlePrevMonth}
+              className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full transition"
+            >
+              ◀
+            </button>
+            <button
+              onClick={handleNextMonth}
+              className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full transition"
+            >
+              ▶
+            </button>
           </div>
         </div>
 
         <div className="grid grid-cols-7 gap-1 text-center mb-2">
-          {['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'].map(d => (
-            <span key={d} className="text-[10px] font-black text-slate-400">{d}</span>
+          {["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"].map((d) => (
+            <span key={d} className="text-[10px] font-black text-slate-400">
+              {d}
+            </span>
           ))}
         </div>
 
         <div className="grid grid-cols-7 gap-1">
           {[...Array(firstDay)].map((_, i) => (
-            <div key={`prev-${i}`} className="h-10 flex items-center justify-center text-slate-200 dark:text-slate-700 text-xs font-bold">
+            <div
+              key={`prev-${i}`}
+              className="h-10 flex items-center justify-center text-slate-200 dark:text-slate-700 text-xs font-bold"
+            >
               {prevMonthDays - firstDay + i + 1}
             </div>
           ))}
           {[...Array(daysInMonth)].map((_, i) => {
             const day = i + 1;
-            const isToday = new Date().toDateString() === new Date(viewDate.getFullYear(), viewDate.getMonth(), day).toDateString();
-            const hasEvent = events.some(e => {
+            const isToday =
+              new Date().toDateString() ===
+              new Date(
+                viewDate.getFullYear(),
+                viewDate.getMonth(),
+                day,
+              ).toDateString();
+            const hasEvent = events.some((e) => {
               const d = new Date(e.event_date);
-              return d.getFullYear() === viewDate.getFullYear() && d.getMonth() === viewDate.getMonth() && d.getDate() === day;
+              return (
+                d.getFullYear() === viewDate.getFullYear() &&
+                d.getMonth() === viewDate.getMonth() &&
+                d.getDate() === day
+              );
             });
             return (
-              <div key={day} className="relative h-10 flex flex-col items-center justify-center">
-                <span className={`text-xs font-black ${isToday ? 'text-blue-500' : 'text-slate-700 dark:text-slate-200'}`}>
+              <div
+                key={day}
+                className="relative h-10 flex flex-col items-center justify-center"
+              >
+                <span
+                  className={`text-xs font-black ${isToday ? "text-blue-500" : "text-slate-700 dark:text-slate-200"}`}
+                >
                   {day}
                 </span>
                 {hasEvent && (
@@ -126,12 +291,17 @@ export default function CalendarPage() {
         </div>
       </div>
 
-      <h2 className="text-sm font-black text-slate-400 uppercase tracking-widest ml-1 mb-6">今後の予定</h2>
+      <h2 className="text-sm font-black text-slate-400 uppercase tracking-widest ml-1 mb-6">
+        今後の予定
+      </h2>
 
       {isLoading ? (
         <div className="space-y-4">
-          {[1, 2].map(i => (
-            <div key={i} className="h-48 bg-slate-200/50 dark:bg-slate-800/50 rounded-[2rem] animate-pulse" />
+          {[1, 2].map((i) => (
+            <div
+              key={i}
+              className="h-48 bg-slate-200/50 dark:bg-slate-800/50 rounded-[2rem] animate-pulse"
+            />
           ))}
         </div>
       ) : (
@@ -139,11 +309,13 @@ export default function CalendarPage() {
           {events.map((event, index) => {
             const date = new Date(event.event_date);
             const participants = event.event_participants || [];
-            const isJoining = currentUser && participants.some((p: any) => p.user_id === currentUser.id);
+            const isJoining =
+              currentUser &&
+              participants.some((p: any) => p.user_id === currentUser.id);
 
             return (
-              <div 
-                key={event.id} 
+              <div
+                key={event.id}
                 style={{ animationDelay: `${index * 100}ms` }}
                 className="bg-white/70 dark:bg-slate-800/60 backdrop-blur-xl p-6 rounded-[2rem] border border-white/40 dark:border-slate-700/50 shadow-sm relative group overflow-hidden animate-in fade-in slide-in-from-bottom-8 duration-700 fill-mode-both hover:shadow-xl hover:-translate-y-1 transition-all"
               >
@@ -157,19 +329,24 @@ export default function CalendarPage() {
                       {date.toLocaleDateString()}
                     </span>
                     {currentProfile?.is_admin && (
-                      <button onClick={() => deleteEvent(event.id)} className="text-slate-300 hover:text-red-500 transition-colors p-1">🗑️</button>
+                      <button
+                        onClick={() => deleteEvent(event.id)}
+                        className="text-slate-300 hover:text-red-500 transition-colors p-1"
+                      >
+                        🗑️
+                      </button>
                     )}
                   </div>
-                  
+
                   <h2 className="text-2xl font-black mb-2 text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
                     {event.title}
                   </h2>
                   <p className="text-sm text-slate-500 dark:text-slate-400 mb-6 leading-relaxed italic">
                     {event.description}
                   </p>
-                  
+
                   <div className="flex items-center justify-between mt-auto">
-                    <button 
+                    <button
                       onClick={() => {
                         setSelectedParticipants(participants);
                         setSelectedEventTitle(event.title);
@@ -177,10 +354,13 @@ export default function CalendarPage() {
                       className="flex -space-x-2 active:scale-90 transition-transform"
                     >
                       {participants.slice(0, 5).map((p: any, i: number) => (
-                        <div key={i} className="transform hover:-translate-y-1 transition-transform">
-                          <UserAvatar 
-                            url={p.profiles?.avatar_url} 
-                            rank={top3Ids[p.user_id]} 
+                        <div
+                          key={i}
+                          className="transform hover:-translate-y-1 transition-transform"
+                        >
+                          <UserAvatar
+                            url={p.profiles?.avatar_url}
+                            rank={top3Ids[p.user_id]}
                             size="w-9 h-9"
                           />
                         </div>
@@ -192,15 +372,15 @@ export default function CalendarPage() {
                       )}
                     </button>
 
-                    <button 
+                    <button
                       onClick={() => handleRSVP(event.id, participants)}
                       className={`px-6 py-2.5 rounded-2xl font-black text-xs transition-all active:scale-95 shadow-lg ${
-                        isJoining 
-                        ? 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-200 shadow-none' 
-                        : 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:from-blue-500 hover:to-indigo-500 shadow-blue-500/30'
+                        isJoining
+                          ? "bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-200 shadow-none"
+                          : "bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:from-blue-500 hover:to-indigo-500 shadow-blue-500/30"
                       }`}
                     >
-                      {isJoining ? 'CANCEL' : 'JOIN'}
+                      {isJoining ? "CANCEL" : "JOIN"}
                     </button>
                   </div>
                 </div>
@@ -210,24 +390,39 @@ export default function CalendarPage() {
         </div>
       )}
 
+      {/* --- Attendees モーダル部分もそのまま --- */}
       {selectedParticipants && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-6 bg-slate-950/40 backdrop-blur-sm animate-in fade-in duration-300">
           <div className="bg-white dark:bg-slate-900 w-full max-w-sm rounded-[2.5rem] shadow-2xl overflow-hidden border border-white/20 dark:border-slate-700/50 animate-in zoom-in-95 duration-300">
             <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50/50">
-              <h3 className="font-black italic text-lg tracking-tight uppercase">Attendees</h3>
-              <button onClick={() => setSelectedParticipants(null)} className="text-slate-400 p-2">✕</button>
+              <h3 className="font-black italic text-lg tracking-tight uppercase">
+                Attendees
+              </h3>
+              <button
+                onClick={() => setSelectedParticipants(null)}
+                className="text-slate-400 p-2"
+              >
+                ✕
+              </button>
             </div>
-            
+
             <div className="p-4 max-h-[50vh] overflow-y-auto space-y-3 custom-scrollbar">
-              <p className="text-[10px] font-black text-blue-500 uppercase tracking-widest mb-4 px-2 italic">{selectedEventTitle}</p>
+              <p className="text-[10px] font-black text-blue-500 uppercase tracking-widest mb-4 px-2 italic">
+                {selectedEventTitle}
+              </p>
               {selectedParticipants.map((p: any, i: number) => {
                 const profile = p.profiles;
-                const studentId = profile?.email ? profile.email.split('@')[0] : '匿名';
+                const studentId = profile?.email
+                  ? profile.email.split("@")[0]
+                  : "匿名";
                 return (
-                  <div key={i} className="flex items-center gap-3 p-3 bg-white dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-700/30">
-                    <UserAvatar 
-                      url={profile?.avatar_url} 
-                      rank={top3Ids[p.user_id]} 
+                  <div
+                    key={i}
+                    className="flex items-center gap-3 p-3 bg-white dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-700/30"
+                  >
+                    <UserAvatar
+                      url={profile?.avatar_url}
+                      rank={top3Ids[p.user_id]}
                       size="w-11 h-11"
                     />
                     <div className="flex flex-col">
@@ -235,10 +430,10 @@ export default function CalendarPage() {
                         {profile?.display_name || studentId}
                       </span>
                       <span className="text-[10px] text-slate-400 font-mono">
-                        {profile?.grade || 'N/A'} · {studentId}
+                        {profile?.grade || "N/A"} · {studentId}
                       </span>
                     </div>
-                    {profile?.role && profile.role !== '部員' && (
+                    {profile?.role && profile.role !== "部員" && (
                       <span className="ml-auto text-[8px] font-black bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 px-2 py-0.5 rounded-full uppercase border border-orange-200">
                         {profile.role}
                       </span>
@@ -248,7 +443,10 @@ export default function CalendarPage() {
               })}
             </div>
             <div className="p-6">
-              <button onClick={() => setSelectedParticipants(null)} className="w-full py-4 bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-black rounded-2xl text-xs active:scale-95 shadow-lg uppercase tracking-widest">
+              <button
+                onClick={() => setSelectedParticipants(null)}
+                className="w-full py-4 bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-black rounded-2xl text-xs active:scale-95 shadow-lg uppercase tracking-widest"
+              >
                 Close
               </button>
             </div>
