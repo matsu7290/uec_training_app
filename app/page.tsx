@@ -5,6 +5,7 @@ import { supabase } from "../utils/supabase";
 import Link from "next/link";
 import AuthButton from "./components/AuthButton";
 import UserAvatar from "./components/UserAvatar";
+import Image from "next/image";
 
 export default function Home() {
   const [records, setRecords] = useState<any[]>([]);
@@ -109,7 +110,7 @@ export default function Home() {
       ) : (
         <div className="mb-10 p-6 bg-slate-100 dark:bg-slate-800/40 rounded-[2rem] border border-dashed border-slate-300 dark:border-slate-700 text-center animate-in zoom-in-95 duration-700 delay-150 fill-mode-both">
           <p className="text-xs font-black text-slate-500 uppercase tracking-widest">
-            ログインすると投稿やナイスバルクができます 💪
+            ログインすると投稿やいいね！ができます 💪
           </p>
         </div>
       )}
@@ -183,7 +184,13 @@ export default function Home() {
                         onClick={() => handleDelete(record.id)}
                         className="text-slate-300 hover:text-red-500 transition-colors p-1"
                       >
-                        🗑️
+                        <Image
+                          src="/assets/dustbox.png"
+                          alt="Dustbox"
+                          width={25}
+                          height={25}
+                          className="w-6 h-6 invert dark:invert-0"
+                          />
                       </button>
                     )}
                   </div>
@@ -245,7 +252,13 @@ export default function Home() {
                           : ""
                       }
                     >
-                      👍
+                      <Image
+                        src="/assets/good.png"
+                        alt="Good"
+                        width={20}
+                        height={20}
+                        className="w-5 h-5"
+                      />
                     </span>
                     いいね！
                     <span

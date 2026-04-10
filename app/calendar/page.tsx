@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 // ★ 修正：新しいクライアントを読み込む
 import { createClient } from "../../utils/supabase/client";
 import UserAvatar from "../components/UserAvatar";
+import Image from "next/image";
 
 export default function CalendarPage() {
   // ★ 修正：コンポーネント内でクライアントを生成
@@ -320,7 +321,13 @@ export default function CalendarPage() {
                 className="bg-white/70 dark:bg-slate-800/60 backdrop-blur-xl p-6 rounded-[2rem] border border-white/40 dark:border-slate-700/50 shadow-sm relative group overflow-hidden animate-in fade-in slide-in-from-bottom-8 duration-700 fill-mode-both hover:shadow-xl hover:-translate-y-1 transition-all"
               >
                 <div className="absolute -top-4 -right-4 p-8 opacity-5 text-9xl grayscale group-hover:rotate-12 group-hover:scale-110 group-hover:opacity-10 transition-all duration-500 pointer-events-none select-none font-black text-slate-100">
-                  📅
+                  <Image
+                    src="/assets/calendar.png"
+                    alt="Calendar"
+                    width={100}
+                    height={100}
+                    className="w-24 h-24 invert dark:invert-0"
+                  />
                 </div>
 
                 <div className="relative z-10">
@@ -333,7 +340,13 @@ export default function CalendarPage() {
                         onClick={() => deleteEvent(event.id)}
                         className="text-slate-300 hover:text-red-500 transition-colors p-1"
                       >
-                        🗑️
+                        <Image
+                          src="/assets/dustbox.png"
+                          alt="Dustbox"
+                          width={25}
+                          height={25}
+                          className="w-6 h-6 invert dark:invert-0"
+                        />
                       </button>
                     )}
                   </div>
