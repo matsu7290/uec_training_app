@@ -2,10 +2,11 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../utils/supabase';
 import { useRouter } from 'next/navigation';
+import type { Exercise } from '../types';
 
 export default function RecordPage() {
   const router = useRouter();
-  const [exercises, setExercises] = useState<any[]>([]);
+  const [exercises, setExercises] = useState<Exercise[]>([]);
   const [isCustom, setIsCustom] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -13,18 +14,23 @@ export default function RecordPage() {
     supabase.from('exercises').select('*').order('id').then(({ data }) => data && setExercises(data));
   }, []);
 
-  const handleSubmit = async (e: any) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsSubmitting(true);
     const fd = new FormData(e.currentTarget);
     const { data: { user } } = await supabase.auth.getUser();
     
-    await supabase.from('training_records').insert([{
+    const { error } = await supabase.from('training_records').insert([{
       exercise_id: !isCustom && fd.get('ex_id') ? Number(fd.get('ex_id')) : null,
       custom_exercise_name: isCustom ? String(fd.get('custom')) : null,
       weight: Number(fd.get('w')), reps: Number(fd.get('r')), sets: Number(fd.get('s')),
       memo: String(fd.get('m')), user_id: user?.id
     }]);
+    if (error) {
+      alert('投稿に失敗しました: ' + error.message);
+      setIsSubmitting(false);
+      return;
+    }
     router.push('/');
     router.refresh();
   };

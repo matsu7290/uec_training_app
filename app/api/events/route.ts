@@ -1,22 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-if (!supabaseUrl || !serviceRoleKey) {
-  throw new Error(
-    "Missing Supabase environment variables. Set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.",
-  );
-}
-
-const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
-  auth: { persistSession: false },
-});
+import { getSupabaseAdmin, verifyStaff } from "@/utils/supabase/admin";
 
 export async function POST(request: NextRequest) {
   try {
-    const { title, event_date, description } = await request.json();
+    const supabaseAdmin = getSupabaseAdmin();
+    const { title, event_date, description, access_token } =
+      await request.json();
 
     if (!title || !event_date) {
       return NextResponse.json(
@@ -25,34 +14,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 管理者権限チェック
-    const {
-      data: { user },
-      error: authError,
-    } = await supabaseAdmin.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json({ error: "認証が必要です" }, { status: 401 });
-    }
-
-    const { data: profile, error: profileError } = await supabaseAdmin
-      .from("profiles")
-      .select("is_admin, role")
-      .eq("id", user.id)
-      .single();
-
-    if (profileError) {
+    // 管理者権限チェック（クライアントから送られたアクセストークンでユーザーを特定）
+    const permission = await verifyStaff(
+      supabaseAdmin,
+      typeof access_token === "string" ? access_token : "",
+    );
+    if (!permission.ok) {
       return NextResponse.json(
-        { error: "プロフィール取得エラー" },
-        { status: 500 },
+        { error: permission.error },
+        { status: permission.status },
       );
-    }
-
-    const hasPermission =
-      profile?.is_admin || ["運営", "副部長", "部長"].includes(profile?.role);
-
-    if (!hasPermission) {
-      return NextResponse.json({ error: "権限がありません" }, { status: 403 });
     }
 
     // イベント作成
@@ -77,7 +48,9 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    const { id, title, event_date, description } = await request.json();
+    const supabaseAdmin = getSupabaseAdmin();
+    const { id, title, event_date, description, access_token } =
+      await request.json();
 
     if (!id || !title || !event_date) {
       return NextResponse.json(
@@ -86,34 +59,16 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    // 管理者権限チェック
-    const {
-      data: { user },
-      error: authError,
-    } = await supabaseAdmin.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json({ error: "認証が必要です" }, { status: 401 });
-    }
-
-    const { data: profile, error: profileError } = await supabaseAdmin
-      .from("profiles")
-      .select("is_admin, role")
-      .eq("id", user.id)
-      .single();
-
-    if (profileError) {
+    // 管理者権限チェック（クライアントから送られたアクセストークンでユーザーを特定）
+    const permission = await verifyStaff(
+      supabaseAdmin,
+      typeof access_token === "string" ? access_token : "",
+    );
+    if (!permission.ok) {
       return NextResponse.json(
-        { error: "プロフィール取得エラー" },
-        { status: 500 },
+        { error: permission.error },
+        { status: permission.status },
       );
-    }
-
-    const hasPermission =
-      profile?.is_admin || ["運営", "副部長", "部長"].includes(profile?.role);
-
-    if (!hasPermission) {
-      return NextResponse.json({ error: "権限がありません" }, { status: 403 });
     }
 
     // イベント更新

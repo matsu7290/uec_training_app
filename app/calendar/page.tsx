@@ -1,25 +1,74 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { User } from "@supabase/supabase-js";
 // ★ 修正：新しいクライアントを読み込む
 import { createClient } from "../../utils/supabase/client";
 import UserAvatar from "../components/UserAvatar";
 import Image from "next/image";
+import {
+  toTop3Map,
+  type CalendarEvent,
+  type Participant,
+  type Profile,
+  type Top3Row,
+} from "../types";
+
+// ★ 修正：クライアントを生成（@supabase/ssr のブラウザクライアントはシングルトン）
+const supabase = createClient();
+
+// カレンダー表示に必要なデータをまとめて取得する（state は更新しない）
+async function loadCalendarData() {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  let profile: Profile | null = null;
+  if (user) {
+    const { data: prof } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("id", user.id)
+      .single();
+    profile = prof as Profile | null;
+  }
+
+  const { data: top3 } = await supabase.from("last_month_top_3").select("*");
+
+  const { data } = await supabase
+    .from("events")
+    .select(
+      `
+        *,
+        event_participants (
+          user_id,
+          profiles ( email, display_name, avatar_url, grade, role )
+        )
+      `,
+    )
+    .order("event_date", { ascending: true });
+
+  return {
+    user,
+    profile,
+    top3Ids: toTop3Map(top3 as Top3Row[] | null),
+    events: (data ?? []) as unknown as CalendarEvent[],
+  };
+}
 
 export default function CalendarPage() {
-  // ★ 修正：コンポーネント内でクライアントを生成
-  const supabase = createClient();
-
-  const [events, setEvents] = useState<any[]>([]);
-  const [currentUser, setCurrentUser] = useState<any>(null);
-  const [currentProfile, setCurrentProfile] = useState<any>(null);
+  const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [currentProfile, setCurrentProfile] = useState<Profile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [viewDate, setViewDate] = useState(new Date());
   const [selectedParticipants, setSelectedParticipants] = useState<
-    any[] | null
+    Participant[] | null
   >(null);
   const [selectedEventTitle, setSelectedEventTitle] = useState("");
   const [top3Ids, setTop3Ids] = useState<Record<string, number>>({});
+  // この値を変更するとデータを再取得する
+  const [reloadKey, setReloadKey] = useState(0);
 
   // ★ 追加：予定追加フォーム用のState
   const [showAddForm, setShowAddForm] = useState(false);
@@ -27,49 +76,22 @@ export default function CalendarPage() {
   const [newDate, setNewDate] = useState("");
   const [newDescription, setNewDescription] = useState("");
 
-  const fetchEvents = async () => {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (user) {
-      setCurrentUser(user);
-      const { data: prof } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", user.id)
-        .single();
-      setCurrentProfile(prof);
-    }
-
-    const { data: top3 } = await supabase.from("last_month_top_3").select("*");
-    if (top3) {
-      const mapping = top3.reduce(
-        (acc: any, curr: any) => ({ ...acc, [curr.user_id]: curr.rank }),
-        {},
-      );
-      setTop3Ids(mapping);
-    }
-
-    const { data } = await supabase
-      .from("events")
-      .select(
-        `
-        *,
-        event_participants (
-          user_id,
-          profiles ( email, display_name, avatar_url, grade, role )
-        )
-      `,
-      )
-      .order("event_date", { ascending: true });
-
-    if (data) setEvents(data);
-    setIsLoading(false);
-  };
+  const fetchEvents = () => setReloadKey((k) => k + 1);
 
   useEffect(() => {
-    fetchEvents();
-  }, []);
+    let ignore = false;
+    loadCalendarData().then((result) => {
+      if (ignore) return;
+      setCurrentUser(result.user);
+      setCurrentProfile(result.profile);
+      setTop3Ids(result.top3Ids);
+      setEvents(result.events);
+      setIsLoading(false);
+    });
+    return () => {
+      ignore = true;
+    };
+  }, [reloadKey]);
 
   const getDaysInMonth = (year: number, month: number) =>
     new Date(year, month + 1, 0).getDate();
@@ -94,7 +116,7 @@ export default function CalendarPage() {
   const handleNextMonth = () =>
     setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() + 1));
 
-  const handleRSVP = async (eventId: string, participants: any[]) => {
+  const handleRSVP = async (eventId: string, participants: Participant[]) => {
     if (!currentUser) return alert("ログインが必要です！");
     const myP = participants.find((p) => p.user_id === currentUser.id);
 
@@ -312,7 +334,7 @@ export default function CalendarPage() {
             const participants = event.event_participants || [];
             const isJoining =
               currentUser &&
-              participants.some((p: any) => p.user_id === currentUser.id);
+              participants.some((p) => p.user_id === currentUser.id);
 
             return (
               <div
@@ -366,7 +388,7 @@ export default function CalendarPage() {
                       }}
                       className="flex -space-x-2 active:scale-90 transition-transform"
                     >
-                      {participants.slice(0, 5).map((p: any, i: number) => (
+                      {participants.slice(0, 5).map((p, i) => (
                         <div
                           key={i}
                           className="transform hover:-translate-y-1 transition-transform"
@@ -423,7 +445,7 @@ export default function CalendarPage() {
               <p className="text-[10px] font-black text-blue-500 uppercase tracking-widest mb-4 px-2 italic">
                 {selectedEventTitle}
               </p>
-              {selectedParticipants.map((p: any, i: number) => {
+              {selectedParticipants.map((p, i) => {
                 const profile = p.profiles;
                 const studentId = profile?.email
                   ? profile.email.split("@")[0]

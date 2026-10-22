@@ -2,16 +2,27 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../../utils/supabase";
 import UserAvatar from "../components/UserAvatar";
+import type { User } from "@supabase/supabase-js";
+import { toTop3Map, type RankingRow, type Top3Row } from "../types";
+
+type CardProps = {
+  title: string;
+  data: RankingRow[];
+  unit: string;
+  color: string;
+  icon: string;
+  children?: React.ReactNode;
+};
 
 export default function RankingPage() {
-  const [big3, setBig3] = useState<any[]>([]);
-  const [volume, setVolume] = useState<any[]>([]);
+  const [big3, setBig3] = useState<RankingRow[]>([]);
+  const [volume, setVolume] = useState<RankingRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [volumeTimeframe, setVolumeTimeframe] = useState<"week" | "month">(
     "week",
   );
   const [top3Ids, setTop3Ids] = useState<Record<string, number>>({});
-  const [currentUser, setCurrentUser] = useState<any>(null); // ★ログイン状態を保持
+  const [currentUser, setCurrentUser] = useState<User | null>(null); // ★ログイン状態を保持
 
   const fetchBig3 = async () => {
     try {
@@ -57,11 +68,7 @@ export default function RankingPage() {
       if (error) {
         console.error("Top3 fetch error:", error);
       } else if (top3) {
-        const mapping = top3.reduce(
-          (acc: any, curr: any) => ({ ...acc, [curr.user_id]: curr.rank }),
-          {},
-        );
-        setTop3Ids(mapping);
+        setTop3Ids(toTop3Map(top3 as Top3Row[]));
       }
     } catch (err) {
       console.error("Top3 unexpected error:", err);
@@ -100,7 +107,7 @@ export default function RankingPage() {
     initFetch();
   }, [volumeTimeframe]);
 
-  const Card = ({ title, data, unit, color, icon, children }: any) => (
+  const Card = ({ title, data, unit, color, icon, children }: CardProps) => (
     <div className="bg-white/70 dark:bg-slate-800/60 backdrop-blur-xl p-6 rounded-[2.5rem] shadow-sm border border-white/40 dark:border-slate-700/50 mb-10 transition-all">
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
@@ -116,7 +123,7 @@ export default function RankingPage() {
         {children}
       </div>
       <div className="space-y-3 pt-2">
-        {data.map((item: any, index: number) => {
+        {data.map((item, index) => {
           const medal =
             index === 0
               ? "🥇"
@@ -125,7 +132,7 @@ export default function RankingPage() {
                 : index === 2
                   ? "🥉"
                   : `${index + 1}`;
-          const val = item.max_weight || item.total_volume;
+          const val = item.max_weight ?? item.total_volume ?? 0;
 
           // ★ログインしていない（currentUserがnull）なら「匿名」にする
           const isGuest = !currentUser;
@@ -134,7 +141,7 @@ export default function RankingPage() {
             : item.display_name || item.email?.split("@")[0] || "匿名";
           const avatarUrl = isGuest ? null : item.avatar_url;
           const grade = isGuest ? null : item.grade;
-          const userId = item.user_id || item.id;
+          const userId = item.user_id || item.id || "";
 
           return (
             <div

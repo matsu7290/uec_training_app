@@ -3,9 +3,10 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../utils/supabase';
 import Link from 'next/link';
+import type { User } from '@supabase/supabase-js';
 
 export default function AuthButton() {
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<User | null>(null);
 
   useEffect(() => {
     // 画面が開かれたときに、現在のログインユーザーを取得

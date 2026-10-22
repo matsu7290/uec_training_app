@@ -118,6 +118,7 @@ export default function AdminPage() {
       title: eventTitle,
       event_date: eventDate,
       description: eventDesc,
+      access_token: sessionData.session.access_token,
     };
 
     const method = editingEventId ? "PUT" : "POST";

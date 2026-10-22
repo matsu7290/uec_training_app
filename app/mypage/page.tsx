@@ -4,47 +4,69 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../../utils/supabase';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import type { Profile, TrainingRecord } from '../types';
+
+// マイページに必要なデータをまとめて取得する（state は更新しない）
+async function loadMyPageData() {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return null;
+
+  const { data: p } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+  
+  // ★ 修正ポイント：種目IDまたはカスタム種目名のどちらかが入力されている（NULLでない）ものだけを取得
+  const { data: r } = await supabase
+    .from('training_records')
+    .select('*, exercises(name)')
+    .eq('user_id', user.id)
+    .or('exercise_id.not.is.null,custom_exercise_name.not.is.null')
+    .order('created_at', { ascending: false });
+
+  return {
+    profile: p as Profile | null,
+    records: (r ?? []) as TrainingRecord[],
+  };
+}
 
 export default function MyPage() {
   const router = useRouter();
-  const [profile, setProfile] = useState<any>(null);
-  const [records, setRecords] = useState<any[]>([]);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [records, setRecords] = useState<TrainingRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  // この値を変更するとデータを再取得する
+  const [reloadKey, setReloadKey] = useState(0);
 
-  const fetchData = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return router.push('/login');
+  const fetchData = () => setReloadKey((k) => k + 1);
 
-    const { data: p } = await supabase.from('profiles').select('*').eq('id', user.id).single();
-    
-    // ★ 修正ポイント：種目IDまたはカスタム種目名のどちらかが入力されている（NULLでない）ものだけを取得
-    const { data: r } = await supabase
-      .from('training_records')
-      .select('*, exercises(name)')
-      .eq('user_id', user.id)
-      .or('exercise_id.not.is.null,custom_exercise_name.not.is.null')
-      .order('created_at', { ascending: false });
-    
-    setProfile(p); 
-    setRecords(r || []);
-    setIsLoading(false);
-  };
+  useEffect(() => {
+    let ignore = false;
+    loadMyPageData().then((result) => {
+      if (ignore) return;
+      if (!result) {
+        router.push('/login');
+        return;
+      }
+      setProfile(result.profile); 
+      setRecords(result.records);
+      setIsLoading(false);
+    });
+    return () => {
+      ignore = true;
+    };
+  }, [reloadKey, router]);
 
-  useEffect(() => { fetchData(); }, []);
-
-  const handleFileUpload = async (e: any) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     try {
       setIsUploading(true);
-      const file = e.target.files[0];
-      if (!file) return;
+      const file = e.target.files?.[0];
+      if (!file || !profile) return;
 
       const fileExt = file.name.split('.').pop();
       const fileName = `${profile.id}-${Math.random()}.${fileExt}`;
       const filePath = `${fileName}`;
 
-      let { error: uploadError } = await supabase.storage
+      const { error: uploadError } = await supabase.storage
         .from('avatars')
         .upload(filePath, file);
 
@@ -58,16 +80,17 @@ export default function MyPage() {
       
       fetchData();
       alert('プロフィール写真を更新しました！');
-    } catch (error: any) {
-      alert('アップロード失敗: ' + error.message);
+    } catch (error) {
+      alert('アップロード失敗: ' + (error instanceof Error ? error.message : String(error)));
     } finally {
       setIsUploading(false);
     }
   };
 
-  const handleUpdate = async (e: any) => {
+  const handleUpdate = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const fd = new FormData(e.target);
+    if (!profile) return;
+    const fd = new FormData(e.currentTarget);
     await supabase.from('profiles').update({ 
       display_name: fd.get('dn'), 
       avatar_url: fd.get('av') 
@@ -77,11 +100,13 @@ export default function MyPage() {
   };
 
   if (isLoading) return <div className="p-8 text-center animate-pulse italic text-slate-400">Loading your stats...</div>;
+  if (!profile) return <div className="p-8 text-center italic text-slate-400">プロフィールが見つかりませんでした。管理者に連絡してください。</div>;
 
   const studentId = profile?.email ? profile.email.split('@')[0] : 'Unknown';
 
-  const renderAvatar = (url: string) => {
+  const renderAvatar = (url?: string | null) => {
     if (url?.startsWith('http')) {
+      // eslint-disable-next-line @next/next/no-img-element -- Supabase Storage の外部URLをそのまま表示するため
       return <img src={url} alt="Avatar" className="w-full h-full object-cover rounded-[2.5rem]" />;
     }
     return <span>{url || '💪'}</span>;
@@ -107,11 +132,11 @@ export default function MyPage() {
           <form onSubmit={handleUpdate} className="space-y-4 animate-in fade-in zoom-in-95 duration-300">
             <div className="space-y-1">
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">アイコン（絵文字を使う場合ここに入力）</label>
-              <input name="av" defaultValue={profile.avatar_url?.startsWith('http') ? '' : profile.avatar_url} placeholder="💪" className="w-full bg-slate-50 dark:bg-slate-900 border-none rounded-xl p-3 text-center font-bold outline-none focus:ring-2 focus:ring-blue-500" />
+              <input name="av" defaultValue={profile.avatar_url?.startsWith('http') ? '' : (profile.avatar_url ?? '')} placeholder="💪" className="w-full bg-slate-50 dark:bg-slate-900 border-none rounded-xl p-3 text-center font-bold outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div className="space-y-1">
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">ニックネーム</label>
-              <input name="dn" defaultValue={profile.display_name} placeholder="Name" required className="w-full bg-slate-50 dark:bg-slate-900 border-none rounded-xl p-3 text-center font-bold outline-none focus:ring-2 focus:ring-blue-500" />
+              <input name="dn" defaultValue={profile.display_name ?? ''} placeholder="Name" required className="w-full bg-slate-50 dark:bg-slate-900 border-none rounded-xl p-3 text-center font-bold outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <button className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black text-xs shadow-lg shadow-blue-500/30 active:scale-95 transition-transform uppercase tracking-widest">保存</button>
             <button type="button" onClick={() => setIsEditing(false)} className="text-xs font-bold text-slate-400 underline">Cancel</button>

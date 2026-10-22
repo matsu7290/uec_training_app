@@ -1,63 +1,86 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { User } from "@supabase/supabase-js";
 import { supabase } from "../utils/supabase";
 import Link from "next/link";
 import AuthButton from "./components/AuthButton";
 import UserAvatar from "./components/UserAvatar";
 import Image from "next/image";
+import {
+  toTop3Map,
+  type Like,
+  type Profile,
+  type Top3Row,
+  type TrainingRecord,
+} from "./types";
 
-export default function Home() {
-  const [records, setRecords] = useState<any[]>([]);
-  const [currentUser, setCurrentUser] = useState<any>(null);
-  const [currentProfile, setCurrentProfile] = useState<any>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [top3Ids, setTop3Ids] = useState<Record<string, number>>({});
+// タイムライン表示に必要なデータをまとめて取得する（state は更新しない）
+async function loadHomeData() {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  const fetchData = async () => {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (user) {
-      setCurrentUser(user);
-      const { data: prof } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", user.id)
-        .single();
-      setCurrentProfile(prof);
-    }
+  let profile: Profile | null = null;
+  if (user) {
+    const { data: prof } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("id", user.id)
+      .single();
+    profile = prof as Profile | null;
+  }
 
-    // 前月トップ3の取得
-    const { data: top3 } = await supabase.from("last_month_top_3").select("*");
-    if (top3) {
-      const mapping = top3.reduce(
-        (acc: any, curr: any) => ({ ...acc, [curr.user_id]: curr.rank }),
-        {},
-      );
-      setTop3Ids(mapping);
-    }
+  // 前月トップ3の取得
+  const { data: top3 } = await supabase.from("last_month_top_3").select("*");
 
-    const { data, error } = await supabase
-      .from("training_records")
-      .select(
-        `
+  const { data, error } = await supabase
+    .from("training_records")
+    .select(
+      `
         id, weight, reps, sets, memo, created_at, custom_exercise_name, user_id,
         exercises ( name ),
         profiles ( email, role, grade, display_name, avatar_url, is_admin ),
         likes ( user_id ) 
       `,
-      )
-      .order("created_at", { ascending: false });
+    )
+    .order("created_at", { ascending: false });
 
-    if (error) console.error(error.message);
-    else if (data) setRecords(data);
-    setIsLoading(false);
+  if (error) console.error(error.message);
+
+  return {
+    user,
+    profile,
+    top3Ids: toTop3Map(top3 as Top3Row[] | null),
+    records: (data ?? []) as unknown as TrainingRecord[],
   };
+}
+
+export default function Home() {
+  const [records, setRecords] = useState<TrainingRecord[]>([]);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [currentProfile, setCurrentProfile] = useState<Profile | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [top3Ids, setTop3Ids] = useState<Record<string, number>>({});
+  // この値を変更するとデータを再取得する
+  const [reloadKey, setReloadKey] = useState(0);
+
+  const fetchData = () => setReloadKey((k) => k + 1);
 
   useEffect(() => {
-    fetchData();
-  }, []);
+    let ignore = false;
+    loadHomeData().then((result) => {
+      if (ignore) return;
+      setCurrentUser(result.user);
+      setCurrentProfile(result.profile);
+      setTop3Ids(result.top3Ids);
+      setRecords(result.records);
+      setIsLoading(false);
+    });
+    return () => {
+      ignore = true;
+    };
+  }, [reloadKey]);
 
   const handleDelete = async (recordId: string) => {
     if (!confirm("この投稿を削除してよろしいですか？")) return;
@@ -69,7 +92,7 @@ export default function Home() {
     else fetchData();
   };
 
-  const handleLike = async (recordId: string, likes: any[]) => {
+  const handleLike = async (recordId: string, likes: Like[]) => {
     if (!currentUser) {
       alert("ログインが必要です！");
       return;
@@ -130,7 +153,7 @@ export default function Home() {
             ))}
           </div>
         ) : (
-          records.map((record: any, index: number) => {
+          records.map((record, index) => {
             const date = new Date(record.created_at);
             const formattedDate = `${date.getMonth() + 1}/${date.getDate()} ${date.getHours()}:${String(date.getMinutes()).padStart(2, "0")}`;
             const profile = record.profiles;
@@ -237,7 +260,7 @@ export default function Home() {
                     onClick={() => handleLike(record.id, record.likes || [])}
                     className={`group flex items-center gap-2 px-5 py-2.5 rounded-2xl font-black text-xs transition-all active:scale-95 ${
                       record.likes?.some(
-                        (l: any) => l.user_id === currentUser?.id,
+                        (l) => l.user_id === currentUser?.id,
                       )
                         ? "bg-gradient-to-r from-rose-500 to-pink-500 text-white shadow-lg shadow-rose-500/30"
                         : "bg-slate-100 dark:bg-slate-800 text-slate-500 hover:bg-slate-200"
@@ -246,7 +269,7 @@ export default function Home() {
                     <span
                       className={
                         record.likes?.some(
-                          (l: any) => l.user_id === currentUser?.id,
+                          (l) => l.user_id === currentUser?.id,
                         )
                           ? "animate-bounce"
                           : ""
@@ -262,7 +285,7 @@ export default function Home() {
                     </span>
                     いいね！
                     <span
-                      className={`px-1.5 py-0.5 rounded-lg text-[10px] ${record.likes?.some((l: any) => l.user_id === currentUser?.id) ? "bg-white/20" : "bg-slate-200 dark:bg-slate-700"}`}
+                      className={`px-1.5 py-0.5 rounded-lg text-[10px] ${record.likes?.some((l) => l.user_id === currentUser?.id) ? "bg-white/20" : "bg-slate-200 dark:bg-slate-700"}`}
                     >
                       {record.likes?.length || 0}
                     </span>
